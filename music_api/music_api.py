@@ -41,75 +41,69 @@ def search_song(query: str, limit: int = 10):
 
 def get_audio_stream(video_id: str):
     """
-    Return direct audio-only URL and necessary headers for a YouTube Music video.
-    Uses yt-dlp to extract best audio format URL and headers.
+    Return direct audio-only URL using yt-dlp with bgutil script mode
     """
     try:
-        # Ambil visitor data dan po token dari environment variable (jika ada)
-        visitor_data = os.environ.get('YOUTUBE_VISITOR_DATA')
-        po_token = os.environ.get('YOUTUBE_PO_TOKEN')
+        # Tentukan path absolut ke script generate_once.js
+        # Asumsi script ada di /var/task/bgutil-ytdlp-pot-provider/server/build/generate_once.js
+        script_path = os.path.join(os.getcwd(), "bgutil-ytdlp-pot-provider", "server", "build", "generate_once.js")
         
-        # Siapkan extractor_args
-        extractor_args = {}
-        if visitor_data or po_token:
-            extractor_args['youtube'] = []
-            if visitor_data:
-                extractor_args['youtube'].append(f'visitor_data={visitor_data}')
-            if po_token:
-                extractor_args['youtube'].append(f'po_token={po_token}')
-
+        # Verifikasi script ada
+        if not os.path.exists(script_path):
+            print(f"⚠️ Script not found at {script_path}, falling back to normal mode")
+            script_path = None
+        
         ydl_opts = {
-            # GANTI: Gunakan format yang mencari audio-only terbaik, lalu coba format m4a (audio umum) jika gagal.
-            'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio', 
+            'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
             'noplaylist': True,
             'quiet': True,
-            'extract_flat': True,
-            'simulate': True, 
+            'extract_flat': False,
+            'simulate': True,
             'skip_download': True,
-            # Tambahkan User-Agent yang meniru browser di level yt-dlp, jika ekstrak info gagal tanpa ini.
-            'default_search': 'ytsearch', # Opsional, tapi aman
-            'force_generic_names': True, # Opsional
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
+            },
         }
         
-        # Tambahkan extractor_args jika ada
-        if extractor_args:
-            ydl_opts['extractor_args'] = extractor_args
+        # Tambahkan extractor args untuk mode script jika script tersedia
+        if script_path:
+            ydl_opts['extractor_args'] = {
+                'youtubepot-bgutilscript': {
+                    'script_path': [script_path]
+                }
+            }
+            print(f"✅ Using bgutil script mode with script: {script_path}")
+            
+            # Opsional: atur TTL token (default 6 jam)
+            os.environ['TOKEN_TTL'] = '6'  # dalam jam
 
+        # SISANYA TETAP SAMA
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
             
             best_audio = None
-            
-            # 1. Cek apakah yt-dlp sudah memberikan format terbaik secara otomatis
             if info.get('url') and info.get('http_headers'):
-                # Ini sering terjadi jika yt-dlp berhasil memilih format terbaik secara internal
                 best_audio = info
             else:
-                # 2. Iterasi manual untuk mencari audio-only
                 for f in info.get('formats', []):
-                    # Kriteria: Harus ada codec audio, tidak ada codec video, dan memiliki URL
                     if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and f.get('url'):
                         best_audio = f
-                        break 
+                        break
             
             if best_audio:
                 stream_url = best_audio.get('url')
                 stream_headers = best_audio.get('http_headers', {})
-                
-                # Jaga-jaga: tambahkan User-Agent jika tidak ada (untuk httpx di main.py)
                 if 'User-Agent' not in stream_headers:
-                     stream_headers['User-Agent'] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
-
+                    stream_headers['User-Agent'] = ydl_opts['headers']['User-Agent']
+                
                 return {
-                    "videoId": video_id, 
+                    "videoId": video_id,
                     "audio_url": stream_url,
                     "headers": stream_headers
                 }
         
-        # GANTI error message agar lebih informatif
-        raise Exception(f"No audio stream found for ID {video_id} after checking all formats. Available formats: {len(info.get('formats', []))}")
+        raise Exception(f"No audio stream found for ID {video_id}")
     except Exception as e:
-        # Gunakan HTTPException yang sudah diimpor
         raise HTTPException(status_code=502, detail={"error": "Failed to extract stream info (yt-dlp)", "last_error": str(e)})
 
 def get_home_songs(limit: int = 10):

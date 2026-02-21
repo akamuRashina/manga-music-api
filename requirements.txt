@@ -19,5 +19,6 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.5.0
 uvicorn==0.37.0
-yt-dlp==2025.10.22
+bgutil-ytdlp-pot-provider>=1.2.2
+yt-dlp>=2025.05.22
 ytmusicapi==1.11.1
