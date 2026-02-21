@@ -2,7 +2,7 @@ from ytmusicapi import YTMusic
 import yt_dlp
 from fastapi import HTTPException
 import random
-
+import os   # tambahkan import os
 
 ytmusic = YTMusic()  # no login required
 
@@ -45,6 +45,19 @@ def get_audio_stream(video_id: str):
     Uses yt-dlp to extract best audio format URL and headers.
     """
     try:
+        # Ambil visitor data dan po token dari environment variable (jika ada)
+        visitor_data = os.environ.get('YOUTUBE_VISITOR_DATA')
+        po_token = os.environ.get('YOUTUBE_PO_TOKEN')
+        
+        # Siapkan extractor_args
+        extractor_args = {}
+        if visitor_data or po_token:
+            extractor_args['youtube'] = []
+            if visitor_data:
+                extractor_args['youtube'].append(f'visitor_data={visitor_data}')
+            if po_token:
+                extractor_args['youtube'].append(f'po_token={po_token}')
+
         ydl_opts = {
             # GANTI: Gunakan format yang mencari audio-only terbaik, lalu coba format m4a (audio umum) jika gagal.
             'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio', 
@@ -57,6 +70,10 @@ def get_audio_stream(video_id: str):
             'default_search': 'ytsearch', # Opsional, tapi aman
             'force_generic_names': True, # Opsional
         }
+        
+        # Tambahkan extractor_args jika ada
+        if extractor_args:
+            ydl_opts['extractor_args'] = extractor_args
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
