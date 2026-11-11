@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+cookies.txt
+headers_auth.json
+.env

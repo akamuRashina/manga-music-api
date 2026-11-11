@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.git/
+cookies.txt
+headers_auth.json
+.env
+bgutil-ytdlp-pot-provider/
+test_backend.py
