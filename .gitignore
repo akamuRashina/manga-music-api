@@ -5,3 +5,4 @@ venv/
 cookies.txt
 headers_auth.json
 .env
+bgutil-ytdlp-pot-provider/

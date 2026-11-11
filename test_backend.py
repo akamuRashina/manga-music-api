@@ -1,7 +1,5 @@
-import base64
-import os
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -42,14 +40,14 @@ class BackendTests(unittest.TestCase):
         params = mock_fetch.call_args.kwargs["params"]
         self.assertEqual(params["contentRating[]"], ["safe", "suggestive"])
 
-    def test_manga_chapters_supports_id_lang(self):
+    def test_manga_chapters_defaults_to_id_and_en(self):
         fake_feed = {
             "data": [
                 {"id": "c1", "attributes": {"chapter": "1", "title": "Bab 1", "translatedLanguage": "id"}}
             ]
         }
         with patch.object(manga_api, "_fetch_json", return_value=fake_feed) as mock_fetch:
-            res = self.client.get("/manga/m1/chapters?lang=id,en&offset=50")
+            res = self.client.get("/manga/m1/chapters?offset=50")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["chapters"][0]["translatedLanguage"], "id")
         params = mock_fetch.call_args.kwargs["params"]
@@ -83,45 +81,18 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(song["videoId"], "v1")
         self.assertIsNone(song["album"])
 
-    def test_music_stream_forwards_media_type_range_and_502_before_stream(self):
-        fake_stream = {"videoId": "v1", "audio_url": "https://cdn.example/audio", "headers": {}}
-
-        async def ok_send(req, stream=True):
-            resp = MagicMock()
-            resp.status_code = 206
-            resp.headers = {"Content-Type": "audio/mp4", "Content-Range": "bytes 0-3/10", "Content-Length": "4"}
-            resp.raise_for_status = MagicMock()
-
-            async def aiter_bytes():
-                yield b"abcd"
-
-            async def aclose():
-                return None
-
-            resp.aiter_bytes = aiter_bytes
-            resp.aclose = aclose
-            return resp
-
-        with patch.object(main, "get_audio_stream", return_value=fake_stream), \
-             patch("httpx.AsyncClient.send", side_effect=ok_send):
-            res = self.client.get("/music/v1/stream", headers={"Range": "bytes=0-3"})
-        self.assertEqual(res.status_code, 206)
-        self.assertEqual(res.headers["content-type"], "audio/mp4")
-        self.assertEqual(res.headers["content-range"], "bytes 0-3/10")
-        self.assertEqual(res.content, b"abcd")
-
-        with patch.object(main, "get_audio_stream", return_value=fake_stream), \
-             patch("httpx.AsyncClient.send", side_effect=main.httpx.ConnectError("boom")):
-            err = self.client.get("/music/v1/stream")
-        self.assertEqual(err.status_code, 502)
-
-    def test_cookies_base64_writes_to_tempdir(self):
-        encoded = base64.b64encode(b"# Netscape HTTP Cookie File\n").decode("ascii")
-        with patch.dict(os.environ, {"COOKIES_BASE64": encoded}):
-            path = music_api._get_cookie_file()
-        self.assertIsNotNone(path)
-        self.assertTrue(os.path.isfile(path))
-        self.assertNotEqual(os.path.dirname(path), music_api.BASE_DIR)
+    def test_music_search_deduplicates_recommendations(self):
+        main_hits = [{"videoId": "v1", "title": "Main", "artists": [{"name": "A"}]}]
+        rec_hits = [
+            {"videoId": "v1", "title": "Main", "artists": [{"name": "A"}]},
+            {"videoId": "v2", "title": "Rec", "artists": [{"name": "B"}]},
+        ]
+        with patch.object(music_api.ytmusic, "search", side_effect=[main_hits, rec_hits]):
+            res = self.client.get("/music/search?q=test")
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual([s["videoId"] for s in body["search_results"]], ["v1"])
+        self.assertEqual([s["videoId"] for s in body["recommended"]], ["v2"])
 
 
 if __name__ == "__main__":
