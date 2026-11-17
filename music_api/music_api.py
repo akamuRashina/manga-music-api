@@ -1,5 +1,9 @@
 import logging
 import random
+import urllib3
+
+# Prevent slow DNS/IPv6 timeouts on networks where IPv6 is unsupported
+urllib3.util.connection.HAS_IPV6 = False
 
 from fastapi import HTTPException
 from ytmusicapi import YTMusic
@@ -61,11 +65,11 @@ def get_home_songs(limit: int = 10):
             if playlist_id:
                 playlist = ytmusic.get_playlist(playlist_id, limit=max(limit * 2, 20))
                 songs = [_format_song(t) for t in (playlist.get("tracks") or []) if t.get("videoId")]
-        except Exception as chart_error:
-            logger.warning("Chart fetch failed: %s", chart_error)
+        except Exception:
+            songs = []
 
         if not songs:
-            hits = ytmusic.search("hits indonesia", filter="songs", limit=max(limit * 2, 20))
+            hits = ytmusic.search("lagu populer indonesia", filter="songs", limit=max(limit * 2, 20))
             songs = [_format_song(r) for r in hits if r.get("videoId")]
 
         if len(songs) > limit:

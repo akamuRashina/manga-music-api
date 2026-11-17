@@ -1,0 +1,13 @@
+.venv
+venv
+__pycache__
+*.pyc
+.git
+.gitignore
+cookies.txt
+headers_auth.json
+bgutil-ytdlp-pot-provider
+downloads
+test_backend.py
+test_komiku.py
+test_pustaka.py
